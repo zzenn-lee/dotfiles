@@ -7,8 +7,12 @@ layers URL handling / fetching / CLI on top of the functions below.
 
 from __future__ import annotations
 
+import json
 import re
+import sys
+import urllib.request
 from html.parser import HTMLParser
+from urllib.parse import parse_qs, urlparse
 
 # ---------------------------------------------------------------------------
 # Constants (verbatim per task brief)
@@ -361,3 +365,176 @@ def excerpt(text: str, limit: int = 3000) -> str:
         pieces.append(content)
 
     return "\n".join(pieces)[:limit]
+
+
+# ---------------------------------------------------------------------------
+# URL handling
+# ---------------------------------------------------------------------------
+
+_USER_AGENT = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
+)
+_FETCH_TIMEOUT = 10
+
+_BLOG_PATH_RE = re.compile(r"^/([^/]+)/(\d+)/?$")
+
+
+def to_mobile_url(url: str) -> str | None:
+    """Normalize a Naver blog URL (any known shape) to the PostView mobile URL.
+
+    Accepts blog.naver.com/{id}/{logNo}, m.blog.naver.com/{id}/{logNo}, and
+    .../PostView.naver?blogId=&logNo= (http/https, with or without extra
+    query noise). Anything else -> None.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+
+    if parsed.scheme not in ("http", "https"):
+        return None
+
+    host = parsed.netloc.lower()
+    if host not in ("blog.naver.com", "m.blog.naver.com"):
+        return None
+
+    path = parsed.path
+
+    if path.rstrip("/").endswith("/PostView.naver") or "PostView.naver" in path:
+        query = parse_qs(parsed.query)
+        blog_id = query.get("blogId", [""])[0]
+        log_no = query.get("logNo", [""])[0]
+        if blog_id and log_no:
+            return f"https://m.blog.naver.com/PostView.naver?blogId={blog_id}&logNo={log_no}"
+        return None
+
+    m = _BLOG_PATH_RE.match(path)
+    if m:
+        blog_id, log_no = m.group(1), m.group(2)
+        return f"https://m.blog.naver.com/PostView.naver?blogId={blog_id}&logNo={log_no}"
+
+    return None
+
+
+def default_fetch(url: str) -> str:
+    """Fetch a URL's HTML with an iPhone Safari User-Agent, 10s timeout."""
+    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:
+        charset = response.headers.get_content_charset() or "utf-8"
+        return response.read().decode(charset, errors="replace")
+
+
+def check(url: str, fetch=default_fetch) -> dict:
+    """Fetch and judge a single Naver blog post URL. Never raises."""
+    mobile_url = to_mobile_url(url)
+    if mobile_url is None:
+        return {
+            "url": url,
+            "title": "",
+            "date": "",
+            "verdict": "읽기실패",
+            "evidence": [],
+            "excerpt": "",
+            "error": "네이버 블로그 주소가 아님",
+        }
+
+    try:
+        html = fetch(mobile_url)
+    except Exception as exc:  # noqa: BLE001 - must never raise, report instead
+        return {
+            "url": url,
+            "title": "",
+            "date": "",
+            "verdict": "읽기실패",
+            "evidence": [],
+            "excerpt": "",
+            "error": str(exc)[:200],
+        }
+
+    try:
+        post = parse_post(html)
+        verdict, evidence = detect(post)
+        return {
+            "url": url,
+            "title": post.get("title", ""),
+            "date": post.get("date", ""),
+            "verdict": verdict,
+            "evidence": evidence,
+            "excerpt": excerpt(post.get("text", "")),
+        }
+    except Exception as exc:  # noqa: BLE001 - must never raise, report instead
+        return {
+            "url": url,
+            "title": "",
+            "date": "",
+            "verdict": "읽기실패",
+            "evidence": [],
+            "excerpt": "",
+            "error": str(exc)[:200],
+        }
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+_DEFAULT_MAX = 30
+
+
+def run(urls: list[str], fetch=default_fetch, max_posts: int = 30) -> list[dict]:
+    """Run `check` over `urls`, capped at `max_posts`. One bad URL never stops the rest."""
+    capped = urls[:max_posts]
+    return [check(url, fetch=fetch) for url in capped]
+
+
+def _read_urls_from_input(path: str) -> list[str]:
+    with open(path, encoding="utf-8") as f:
+        content = f.read()
+
+    stripped = content.strip()
+    if stripped.startswith("["):
+        data = json.loads(stripped)
+        return [str(item) for item in data]
+
+    return [line.strip() for line in content.splitlines() if line.strip()]
+
+
+def main(argv: list[str], fetch=default_fetch) -> str:
+    """CLI entry point. Returns the JSON array string (never prints itself)."""
+    urls: list[str] = []
+    max_posts = _DEFAULT_MAX
+    input_file: str | None = None
+
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--input":
+            if i + 1 >= len(argv):
+                raise SystemExit(2)
+            input_file = argv[i + 1]
+            i += 2
+        elif arg == "--max":
+            if i + 1 >= len(argv):
+                raise SystemExit(2)
+            try:
+                max_posts = int(argv[i + 1])
+            except ValueError:
+                raise SystemExit(2)
+            i += 2
+        else:
+            urls.append(arg)
+            i += 1
+
+    if input_file is not None:
+        urls = _read_urls_from_input(input_file) + urls
+
+    if not urls:
+        raise SystemExit(2)
+
+    results = run(urls, fetch=fetch, max_posts=max_posts)
+    return json.dumps(results, ensure_ascii=False)
+
+
+if __name__ == "__main__":
+    print(main(sys.argv[1:]))

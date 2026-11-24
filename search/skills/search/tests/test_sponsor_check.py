@@ -1,5 +1,7 @@
+import json
 import os
 import sys
+import tempfile
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -7,7 +9,15 @@ _SCRIPTS_DIR = os.path.join(os.path.dirname(_HERE), "scripts")
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
-from sponsor_check import detect, excerpt, parse_post  # noqa: E402
+from sponsor_check import (  # noqa: E402
+    check,
+    detect,
+    excerpt,
+    main,
+    parse_post,
+    run,
+    to_mobile_url,
+)
 
 _FIXTURES_DIR = os.path.join(_HERE, "fixtures")
 
@@ -147,6 +157,97 @@ class ExcerptTests(unittest.TestCase):
         self.assertIn(middle_sentence, result)
         self.assertIn(tail_sentence, result)
         self.assertLessEqual(len(result), 3000)
+
+
+class ToMobileUrlTests(unittest.TestCase):
+    def test_to_mobile_url_variants(self):
+        expected = "https://m.blog.naver.com/PostView.naver?blogId=myid&logNo=12345"
+        variants = [
+            "https://blog.naver.com/myid/12345",
+            "http://blog.naver.com/myid/12345",
+            "https://m.blog.naver.com/myid/12345",
+            "https://blog.naver.com/myid/12345?from=search&extra=1",
+            "https://m.blog.naver.com/PostView.naver?blogId=myid&logNo=12345",
+            "https://blog.naver.com/PostView.naver?blogId=myid&logNo=12345&redirect=Dlog",
+        ]
+        for url in variants:
+            with self.subTest(url=url):
+                self.assertEqual(to_mobile_url(url), expected)
+
+        self.assertIsNone(to_mobile_url("https://cafe.naver.com/x/1"))
+
+
+class CheckTests(unittest.TestCase):
+    def test_non_blog_url_reported_not_raised(self):
+        result = check("https://cafe.naver.com/x/1")
+        self.assertEqual(result["verdict"], "읽기실패")
+        self.assertEqual(result["error"], "네이버 블로그 주소가 아님")
+
+    def test_check_success_returns_verdict_from_fetched_html(self):
+        html = _load_fixture("sponsored_bottom.html")
+
+        def stub_fetch(_url: str) -> str:
+            return html
+
+        result = check("https://blog.naver.com/myid/12345", fetch=stub_fetch)
+        self.assertEqual(result["verdict"], "협찬")
+        self.assertEqual(result["title"], "동네 카페 다녀온 후기")
+        self.assertNotIn("error", result)
+
+
+class RunTests(unittest.TestCase):
+    def test_fetch_failure_continues(self):
+        html = _load_fixture("sponsored_bottom.html")
+
+        def flaky_fetch(url: str) -> str:
+            if "bad" in url:
+                raise OSError("boom")
+            return html
+
+        results = run(
+            [
+                "https://blog.naver.com/bad/1",
+                "https://blog.naver.com/myid/12345",
+            ],
+            fetch=flaky_fetch,
+        )
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["verdict"], "읽기실패")
+        self.assertEqual(results[1]["verdict"], "협찬")
+
+    def test_max_posts_cap(self):
+        html = _load_fixture("plain.html")
+
+        def stub_fetch(_url: str) -> str:
+            return html
+
+        urls = [f"https://blog.naver.com/myid/{i}" for i in range(35)]
+        results = run(urls, fetch=stub_fetch)
+        self.assertEqual(len(results), 30)
+
+
+class CliTests(unittest.TestCase):
+    def test_cli_json_output(self):
+        html = _load_fixture("sponsored_bottom.html")
+
+        def stub_fetch(_url: str) -> str:
+            return html
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("https://blog.naver.com/myid/12345\n")
+            tmpfile = f.name
+
+        try:
+            output = main(["--input", tmpfile], fetch=stub_fetch)
+        finally:
+            os.unlink(tmpfile)
+
+        parsed = json.loads(output)
+        self.assertEqual(len(parsed), 1)
+        self.assertNotIn("\\u", output)
+        self.assertIn("협찬", output)
 
 
 if __name__ == "__main__":
