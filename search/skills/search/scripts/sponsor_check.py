@@ -84,9 +84,12 @@ _ROOT_FALLBACK_IDS = ("viewTypeSelector",)
 _ROOT_FALLBACK_CLASSES = ("post_ct",)
 _TITLE_CLASS = "se-title-text"
 _DATE_CLASSES = ("blog_date", "se_publishDate")
-_COMPONENT_CLASS = "se-component"
 _VOID_TAGS = {"br", "img", "meta", "link", "hr", "input", "area", "base", "col", "embed", "source", "track", "wbr"}
-_PARA_TAGS = {"p", "div"}
+# Block-level boundaries that start a fresh paragraph: se-editor component
+# wrappers are plain <div>s, and old-editor/minified markup relies on bare
+# <p>/<div>/list/heading/blockquote tags instead of literal newlines.
+_BLOCK_TAGS = {"p", "div", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote"}
+_WHITESPACE_RE = re.compile(r"\s+")
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +117,7 @@ class _PostParser(HTMLParser):
 
     # -- helpers -----------------------------------------------------
     def _flush_para(self) -> None:
-        text = "".join(self._buf).strip()
+        text = _WHITESPACE_RE.sub(" ", "".join(self._buf)).strip()
         self._buf = []
         if text:
             self.paragraphs.append(text)
@@ -150,8 +153,11 @@ class _PostParser(HTMLParser):
         opening_title = _TITLE_CLASS in classes
         opening_date = any(c in classes for c in _DATE_CLASSES)
 
-        # paragraph boundaries: a new component/block starts a fresh chunk
-        if in_root and not opening_root_now and (tag in _PARA_TAGS and _COMPONENT_CLASS in classes):
+        # paragraph boundaries: a new block-level element (se-component,
+        # bare <p>/<div>, list items, headings, blockquotes) or <br> starts
+        # a fresh chunk — covers both the new se-editor and minified
+        # old-editor markup with no literal newlines between tags.
+        if in_root and not opening_root_now and tag in _BLOCK_TAGS:
             self._flush_para()
         if in_root and tag == "br":
             self._flush_para()
@@ -167,17 +173,24 @@ class _PostParser(HTMLParser):
                 self._date_open_idx = idx
 
     def handle_endtag(self, tag: str) -> None:
-        if not self._stack or self._stack[-1] != tag:
-            return  # mismatched / void close tag we never pushed
-        idx = len(self._stack) - 1
-        self._stack.pop()
-        if self._root_open_idx is not None and idx == self._root_open_idx:
-            self._flush_para()
-            self._root_open_idx = None
-        if self._title_open_idx is not None and idx == self._title_open_idx:
-            self._title_open_idx = None
-        if self._date_open_idx is not None and idx == self._date_open_idx:
-            self._date_open_idx = None
+        if tag not in self._stack:
+            return  # void / stray close tag we never pushed — ignore
+        # Implicit close: pop everything above and including the matching
+        # open tag, so an unclosed non-void tag (e.g. a stray <span>) can't
+        # permanently desync root/title/date tracking for the rest of the
+        # document.
+        while self._stack:
+            idx = len(self._stack) - 1
+            popped = self._stack.pop()
+            if self._root_open_idx is not None and idx == self._root_open_idx:
+                self._flush_para()
+                self._root_open_idx = None
+            if self._title_open_idx is not None and idx == self._title_open_idx:
+                self._title_open_idx = None
+            if self._date_open_idx is not None and idx == self._date_open_idx:
+                self._date_open_idx = None
+            if popped == tag:
+                break
 
     def handle_data(self, data: str) -> None:
         if self._title_open_idx is not None:
@@ -321,6 +334,7 @@ def excerpt(text: str, limit: int = 3000) -> str:
     if not text:
         return ""
 
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     n = len(text)
     segments: list[tuple[int, str]] = [(0, text[:600])]
     if n > 600:

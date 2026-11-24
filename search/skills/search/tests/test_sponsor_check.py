@@ -35,6 +35,47 @@ class ParsePostTests(unittest.TestCase):
         post = parse_post(html)
         self.assertTrue(post["text"].strip())
 
+    def test_unclosed_tag_inside_root_does_not_leak_content_after_root_closes(self):
+        # A stray, never-closed <span> inside the body root must not desync
+        # root tracking: the root's own </div> still has to close it, and
+        # anything after that </div> must not be treated as body content.
+        html = (
+            '<div class="se-main-container">'
+            "<p>첫 문단입니다 <span>닫히지 않은 span 태그 이후 내용</p>"
+            '<a href="https://example.com/inside">inside-link</a>'
+            "</div>"
+            "<p>루트가 닫힌 뒤에 나오는 바깥 문단입니다.</p>"
+            '<a href="https://example.com/outside">outside-link</a>'
+        )
+        post = parse_post(html)  # must not raise
+        self.assertIn("첫 문단입니다", post["text"])
+        self.assertNotIn("바깥 문단", post["text"])
+        self.assertIn("https://example.com/inside", post["links"])
+        self.assertNotIn("https://example.com/outside", post["links"])
+
+    def test_old_editor_minified_splits_paragraphs_and_excerpt_finds_middle(self):
+        # No literal newlines between <p> tags — paragraph splitting must
+        # come from the block-tag boundaries, not from whitespace in markup.
+        html = (
+            '<div id="viewTypeSelector">'
+            "<p>첫 번째 문단입니다.</p>"
+            "<p>단점은 주차 공간이 좁다는 점이었습니다.</p>"
+            "<p>마지막 문단입니다.</p>"
+            "</div>"
+        )
+        post = parse_post(html)
+        paragraphs = post["text"].split("\n")
+        self.assertEqual(
+            paragraphs,
+            [
+                "첫 번째 문단입니다.",
+                "단점은 주차 공간이 좁다는 점이었습니다.",
+                "마지막 문단입니다.",
+            ],
+        )
+        result = excerpt(post["text"])
+        self.assertIn("단점은 주차 공간이 좁다는 점이었습니다.", result)
+
 
 class DetectTests(unittest.TestCase):
     def test_sponsored_bottom(self):
