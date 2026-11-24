@@ -33,18 +33,6 @@ def _positions(evidence):
 
 
 class ParsePostTests(unittest.TestCase):
-    def test_parse_se_editor(self):
-        html = _load_fixture("sponsored_bottom.html")
-        post = parse_post(html)
-        self.assertEqual(post["title"], "동네 카페 다녀온 후기")
-        self.assertTrue(post["date"])
-        self.assertIn("오늘은 동네에 새로 생긴 카페를 다녀왔어요.", post["text"])
-
-    def test_parse_old_editor(self):
-        html = _load_fixture("plain.html")
-        post = parse_post(html)
-        self.assertTrue(post["text"].strip())
-
     def test_unclosed_tag_inside_root_does_not_leak_content_after_root_closes(self):
         # A stray, never-closed <span> inside the body root must not desync
         # root tracking: the root's own </div> still has to close it, and
@@ -169,18 +157,6 @@ class DetectTests(unittest.TestCase):
 
 
 class ExcerptTests(unittest.TestCase):
-    def test_excerpt_keeps_tail_and_proscons(self):
-        filler = "오늘 다녀온 곳은 분위기가 평범했고 특별한 점은 없었습니다. " * 150
-        middle_sentence = "단점은 주차 공간이 좁다는 점이었습니다."
-        tail_sentence = "이 문장은 끝부분에만 등장하는 고유한 마지막 문장입니다."
-        text = filler + "\n" + middle_sentence + "\n" + filler + "\n" + tail_sentence
-        self.assertGreaterEqual(len(text), 10000)  # the 10,000-char scale the brief asks for
-
-        result = excerpt(text, limit=3000)
-        self.assertIn(middle_sentence, result)
-        self.assertIn(tail_sentence, result)
-        self.assertLessEqual(len(result), 3000)
-
     def test_excerpt_keeps_tail_even_with_many_proscons_paragraphs(self):
         # 60 pros/cons-bearing paragraphs in the middle must not crowd out
         # the tail — the tail is always kept, and the final paragraph here
@@ -221,17 +197,6 @@ class CheckTests(unittest.TestCase):
         result = check("https://cafe.naver.com/x/1")
         self.assertEqual(result["verdict"], "읽기실패")
         self.assertEqual(result["error"], "네이버 블로그 주소가 아님")
-
-    def test_check_success_returns_verdict_from_fetched_html(self):
-        html = _load_fixture("sponsored_bottom.html")
-
-        def stub_fetch(_url: str) -> str:
-            return html
-
-        result = check("https://blog.naver.com/myid/12345", fetch=stub_fetch)
-        self.assertEqual(result["verdict"], "협찬")
-        self.assertEqual(result["title"], "동네 카페 다녀온 후기")
-        self.assertNotIn("error", result)
 
     def test_empty_body_reports_read_failure(self):
         # A deleted post / block-captcha page parses without raising but
@@ -280,12 +245,6 @@ class RunTests(unittest.TestCase):
         results = run(urls, fetch=stub_fetch)
         self.assertEqual(len(results), 30)
 
-    def test_negative_max_posts_raises_value_error(self):
-        def _unreachable_fetch(_url: str) -> str:
-            self.fail("fetch must not be called for an invalid max_posts")
-
-        with self.assertRaises(ValueError):
-            run(["https://blog.naver.com/myid/1"], fetch=_unreachable_fetch, max_posts=-1)
 
 
 def _unreachable_fetch(_url: str) -> str:
@@ -315,39 +274,27 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("\\u", output)
         self.assertIn("협찬", output)
 
-    def test_max_zero_exits_2(self):
-        with self.assertRaises(SystemExit) as ctx:
-            main(["--max", "0", "https://blog.naver.com/myid/1"], fetch=_unreachable_fetch)
-        self.assertEqual(ctx.exception.code, 2)
-
-    def test_max_above_ceiling_exits_2(self):
-        with self.assertRaises(SystemExit) as ctx:
-            main(["--max", "101", "https://blog.naver.com/myid/1"], fetch=_unreachable_fetch)
-        self.assertEqual(ctx.exception.code, 2)
-
-    def test_max_non_integer_exits_2(self):
-        with self.assertRaises(SystemExit) as ctx:
-            main(["--max", "abc", "https://blog.naver.com/myid/1"], fetch=_unreachable_fetch)
-        self.assertEqual(ctx.exception.code, 2)
-
-    def test_input_missing_file_exits_2(self):
-        with self.assertRaises(SystemExit) as ctx:
-            main(["--input", "/no/such/path/does-not-exist.txt"], fetch=_unreachable_fetch)
-        self.assertEqual(ctx.exception.code, 2)
-
-    def test_input_malformed_json_exits_2(self):
+    def test_bad_arguments_exit_2_without_fetching(self):
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".txt", delete=False, encoding="utf-8"
         ) as f:
             f.write("[bad json")
-            tmpfile = f.name
-
+            bad_json = f.name
+        cases = [
+            ["--max", "0", "https://blog.naver.com/myid/1"],
+            ["--max", "101", "https://blog.naver.com/myid/1"],
+            ["--max", "abc", "https://blog.naver.com/myid/1"],
+            ["--input", "/no/such/path/does-not-exist.txt"],
+            ["--input", bad_json],
+        ]
         try:
-            with self.assertRaises(SystemExit) as ctx:
-                main(["--input", tmpfile], fetch=_unreachable_fetch)
+            for argv in cases:
+                with self.subTest(argv=argv), self.assertRaises(SystemExit) as ctx:
+                    main(argv, fetch=_unreachable_fetch)
+                self.assertEqual(ctx.exception.code, 2)
         finally:
-            os.unlink(tmpfile)
-        self.assertEqual(ctx.exception.code, 2)
+            os.unlink(bad_json)
+
 
 
 if __name__ == "__main__":

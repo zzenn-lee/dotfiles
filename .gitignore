@@ -1,3 +1,7 @@
 keys.env
 *.env
 !*.env.example
+
+# 작업 문서는 저장소에 올리지 않음 (설계·계획·작업 기록)
+docs/superpowers/
+.superpowers/
