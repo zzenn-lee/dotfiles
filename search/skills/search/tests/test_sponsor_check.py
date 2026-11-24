@@ -225,6 +225,17 @@ class RunTests(unittest.TestCase):
         results = run(urls, fetch=stub_fetch)
         self.assertEqual(len(results), 30)
 
+    def test_negative_max_posts_raises_value_error(self):
+        def _unreachable_fetch(_url: str) -> str:
+            self.fail("fetch must not be called for an invalid max_posts")
+
+        with self.assertRaises(ValueError):
+            run(["https://blog.naver.com/myid/1"], fetch=_unreachable_fetch, max_posts=-1)
+
+
+def _unreachable_fetch(_url: str) -> str:
+    raise AssertionError("fetch must not be called for a rejected CLI argument")
+
 
 class CliTests(unittest.TestCase):
     def test_cli_json_output(self):
@@ -248,6 +259,40 @@ class CliTests(unittest.TestCase):
         self.assertEqual(len(parsed), 1)
         self.assertNotIn("\\u", output)
         self.assertIn("협찬", output)
+
+    def test_max_zero_exits_2(self):
+        with self.assertRaises(SystemExit) as ctx:
+            main(["--max", "0", "https://blog.naver.com/myid/1"], fetch=_unreachable_fetch)
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_max_above_ceiling_exits_2(self):
+        with self.assertRaises(SystemExit) as ctx:
+            main(["--max", "101", "https://blog.naver.com/myid/1"], fetch=_unreachable_fetch)
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_max_non_integer_exits_2(self):
+        with self.assertRaises(SystemExit) as ctx:
+            main(["--max", "abc", "https://blog.naver.com/myid/1"], fetch=_unreachable_fetch)
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_input_missing_file_exits_2(self):
+        with self.assertRaises(SystemExit) as ctx:
+            main(["--input", "/no/such/path/does-not-exist.txt"], fetch=_unreachable_fetch)
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_input_malformed_json_exits_2(self):
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("[bad json")
+            tmpfile = f.name
+
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                main(["--input", tmpfile], fetch=_unreachable_fetch)
+        finally:
+            os.unlink(tmpfile)
+        self.assertEqual(ctx.exception.code, 2)
 
 
 if __name__ == "__main__":

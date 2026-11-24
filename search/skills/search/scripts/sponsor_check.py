@@ -480,15 +480,20 @@ def check(url: str, fetch=default_fetch) -> dict:
 # ---------------------------------------------------------------------------
 
 _DEFAULT_MAX = 30
+_MAX_POSTS_CEILING = 100
 
 
 def run(urls: list[str], fetch=default_fetch, max_posts: int = 30) -> list[dict]:
     """Run `check` over `urls`, capped at `max_posts`. One bad URL never stops the rest."""
+    if max_posts < 1:
+        raise ValueError("max_posts must be >= 1")
     capped = urls[:max_posts]
     return [check(url, fetch=fetch) for url in capped]
 
 
 def _read_urls_from_input(path: str) -> list[str]:
+    """Read URLs from `path` (JSON list or one-per-line). Raises on bad input;
+    callers (main) turn that into exit code 2."""
     with open(path, encoding="utf-8") as f:
         content = f.read()
 
@@ -498,6 +503,11 @@ def _read_urls_from_input(path: str) -> list[str]:
         return [str(item) for item in data]
 
     return [line.strip() for line in content.splitlines() if line.strip()]
+
+
+def _exit_with_error(message: str) -> None:
+    print(message, file=sys.stderr)
+    raise SystemExit(2)
 
 
 def main(argv: list[str], fetch=default_fetch) -> str:
@@ -511,26 +521,36 @@ def main(argv: list[str], fetch=default_fetch) -> str:
         arg = argv[i]
         if arg == "--input":
             if i + 1 >= len(argv):
-                raise SystemExit(2)
+                _exit_with_error("--input requires a FILE argument")
             input_file = argv[i + 1]
             i += 2
         elif arg == "--max":
             if i + 1 >= len(argv):
-                raise SystemExit(2)
+                _exit_with_error("--max requires an N argument")
+            raw_max = argv[i + 1]
             try:
-                max_posts = int(argv[i + 1])
+                max_posts = int(raw_max)
             except ValueError:
-                raise SystemExit(2)
+                _exit_with_error(f"--max must be an integer, got: {raw_max!r}")
+            if not 1 <= max_posts <= _MAX_POSTS_CEILING:
+                _exit_with_error(
+                    f"--max must be between 1 and {_MAX_POSTS_CEILING}, got: {max_posts}"
+                )
             i += 2
         else:
             urls.append(arg)
             i += 1
 
     if input_file is not None:
-        urls = _read_urls_from_input(input_file) + urls
+        try:
+            urls = _read_urls_from_input(input_file) + urls
+        except OSError as exc:
+            _exit_with_error(f"--input could not read {input_file!r}: {exc}")
+        except json.JSONDecodeError as exc:
+            _exit_with_error(f"--input {input_file!r} is not valid JSON: {exc}")
 
     if not urls:
-        raise SystemExit(2)
+        _exit_with_error("no URLs given (pass URL arguments or --input FILE)")
 
     results = run(urls, fetch=fetch, max_posts=max_posts)
     return json.dumps(results, ensure_ascii=False)
