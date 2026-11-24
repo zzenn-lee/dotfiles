@@ -1,0 +1,112 @@
+import os
+import sys
+import unittest
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_SCRIPTS_DIR = os.path.join(os.path.dirname(_HERE), "scripts")
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+
+from sponsor_check import detect, excerpt, parse_post  # noqa: E402
+
+_FIXTURES_DIR = os.path.join(_HERE, "fixtures")
+
+
+def _load_fixture(name: str) -> str:
+    path = os.path.join(_FIXTURES_DIR, name)
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def _positions(evidence):
+    return [item["position"] for item in evidence]
+
+
+class ParsePostTests(unittest.TestCase):
+    def test_parse_se_editor(self):
+        html = _load_fixture("sponsored_bottom.html")
+        post = parse_post(html)
+        self.assertEqual(post["title"], "동네 카페 다녀온 후기")
+        self.assertTrue(post["date"])
+        self.assertIn("오늘은 동네에 새로 생긴 카페를 다녀왔어요.", post["text"])
+
+    def test_parse_old_editor(self):
+        html = _load_fixture("plain.html")
+        post = parse_post(html)
+        self.assertTrue(post["text"].strip())
+
+
+class DetectTests(unittest.TestCase):
+    def test_sponsored_bottom(self):
+        post = parse_post(_load_fixture("sponsored_bottom.html"))
+        verdict, evidence = detect(post)
+        self.assertEqual(verdict, "협찬")
+        self.assertIn("맨 아래", _positions(evidence))
+
+    def test_sponsored_top(self):
+        post = parse_post(_load_fixture("sponsored_top.html"))
+        verdict, evidence = detect(post)
+        self.assertEqual(verdict, "협찬")
+        self.assertIn("맨 위", _positions(evidence))
+
+    def test_banner_image_domain_detected(self):
+        post = parse_post(_load_fixture("banner_only.html"))
+        verdict, evidence = detect(post)
+        self.assertEqual(verdict, "협찬")
+        self.assertIn("링크/이미지", _positions(evidence))
+
+    def test_plain_is_none(self):
+        post = parse_post(_load_fixture("plain.html"))
+        verdict, evidence = detect(post)
+        self.assertEqual(verdict, "없음")
+        self.assertEqual(evidence, [])
+
+    def test_negated_disclosure_is_not_sponsored(self):
+        post = parse_post(_load_fixture("negated.html"))
+        verdict, _evidence = detect(post)
+        self.assertEqual(verdict, "없음")
+
+    def test_plain_word_gwanggo_mid_text_not_flagged(self):
+        filler = "맛도 향도 괜찮았고 가격도 적당한 편이었습니다. " * 20
+        text = filler + "광고에서 보던 그 맛이 그대로 느껴져서 신기했습니다. " + filler
+        post = {"title": "t", "date": "d", "text": text, "links": [], "images": []}
+        verdict, evidence = detect(post)
+        self.assertEqual(verdict, "없음")
+        self.assertEqual(evidence, [])
+
+    def test_mixed_naedon_flags_both(self):
+        post = parse_post(_load_fixture("mixed_naedon.html"))
+        verdict, evidence = detect(post)
+        self.assertEqual(verdict, "협찬")
+        self.assertIn(
+            "내돈내산 표기와 협찬 표시가 함께 있음",
+            [item["signal"] for item in evidence],
+        )
+
+    def test_repeated_phone_is_suspect(self):
+        text = (
+            "맛있는 식당이라 추천하고 싶어요. 예약 문의는 010-1234-5678 로 주세요. "
+            + "궁금하신 분들은 010-1234-5678 로 연락 주시면 안내해드립니다."
+        )
+        post = {"title": "t", "date": "d", "text": text, "links": [], "images": []}
+        verdict, evidence = detect(post)
+        self.assertEqual(verdict, "의심")
+        self.assertTrue(evidence)
+
+
+class ExcerptTests(unittest.TestCase):
+    def test_excerpt_keeps_tail_and_proscons(self):
+        filler = "오늘 다녀온 곳은 분위기가 평범했고 특별한 점은 없었습니다. " * 150
+        middle_sentence = "단점은 주차 공간이 좁다는 점이었습니다."
+        tail_sentence = "이 문장은 끝부분에만 등장하는 고유한 마지막 문장입니다."
+        text = filler + "\n" + middle_sentence + "\n" + filler + "\n" + tail_sentence
+        self.assertGreaterEqual(len(text), 10000)  # the 10,000-char scale the brief asks for
+
+        result = excerpt(text, limit=3000)
+        self.assertIn(middle_sentence, result)
+        self.assertIn(tail_sentence, result)
+        self.assertLessEqual(len(result), 3000)
+
+
+if __name__ == "__main__":
+    unittest.main()
