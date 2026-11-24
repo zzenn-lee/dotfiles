@@ -9,6 +9,7 @@ claude/
 └─ skills/
    └─ explain/SKILL.md   /explain — 코드나 변경을 위에서 아래로(목적 → 아키텍처 → 파일 트리 → 세부) 한 번에 설명
 search/                  네이버·구글·소셜·지도·숙소 검색 도구 설치와 키 설정 (macOS) — search/README.md
+└─ skills/search/       /search — 생활 정보 검색: 계획 확인 → 협찬 표시·장단점·출처 등급 → 아티팩트 리포트 (install-mac.sh 가 링크)
 ```
 
 예정: `claude/CLAUDE.md`(전역 규칙), `claude/hooks/`(설명 빠뜨림 방지 Stop hook)

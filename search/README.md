@@ -27,6 +27,7 @@ bash search/bin/set-key                       # 넣을 수 있는 키 이름 목
 | reddit | MCP | Reddit 검색·댓글 | 이미 승인된 Reddit 키 (신규 발급 불가) | `reddit-mcp-buddy@1.3.0` |
 | fli | MCP | 구글 항공권 (가장 싼 날짜 찾기) | — | `flights[all]==0.9.0` — **지금은 꺼 둠** |
 | last30days | 스킬 | Reddit·YouTube·HN 무료, Threads·YouTube 댓글은 ScrapeCreators 키 (한 번 주는 10,000 크레딧, 초기화 없음) | 선택 | `mvanhorn/last30days-skill` (최신) |
+| search | 스킬 (이 저장소) | `/search` — 계획 먼저 확인 → 여러 곳에서 모으기 → 네이버 블로그 협찬 판별 → 출처 등급·교차 확인 → 아티팩트 리포트 | 위 도구들의 키 | `search/skills/search` → `~/.claude/skills/search` 링크 |
 
 ## 파일
 
@@ -35,7 +36,11 @@ search/
 ├─ install-mac.sh     설치·등록 (여러 번 실행해도 됨)
 ├─ keys.env.example   키 목록 템플릿 → ~/.config/search/keys.env 로 복사돼요
 ├─ bin/mcp            MCP 런처: 키 파일을 읽고 이름에 맞는 서버를 고정 버전으로 실행
-└─ bin/set-key        키 하나를 숨김 입력으로 저장하고 설치를 다시 실행
+├─ bin/set-key        키 하나를 숨김 입력으로 저장하고 설치를 다시 실행
+└─ skills/search/     /search 스킬 (install-mac.sh 가 ~/.claude/skills/search 로 링크)
+   ├─ SKILL.md                   계획 → 모으기 → 협찬 판별 → 장단점 → 교차 확인 → 리포트
+   ├─ scripts/sponsor_check.py   네이버 블로그 협찬 판별 (협찬·의심·없음·읽기실패 + 근거·발췌)
+   └─ tests/                     직접 만든 표본 HTML 로 네트워크 없이 판정 확인
 ```
 
 - 키는 `~/.config/search/keys.env` 한 곳에만 있어요 (권한 600, git 에 안 올라감). Claude 설정 파일에는 키가 들어가지 않아요.
