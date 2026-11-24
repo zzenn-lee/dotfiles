@@ -25,7 +25,8 @@ Never ask which target — pick by this table and fill it into §0 `대상:` (no
 ## Step 2: Gather evidence (read before writing)
 
 - **change**: `git show --stat` / `git diff --stat`, then the full diff, then read each changed
-  file around the hunks. Note whether test files changed.
+  file around the hunks. Note whether test files changed. `grep` callers/users of changed
+  functions, config keys and outputs outside the diff (for 영향 범위).
 - **code**: entry points (main, CLI, routes, scripts), imports, callers (`grep`), config, tests, README.
 - **Request / reason** (both modes), in this order: this conversation, commit message, PR body,
   plan/notes files, docstrings or comments that quote the user. Cite where it came from.
@@ -45,6 +46,7 @@ from the explained commit, add "(현재 작업 트리 기준)" once.
 ```
 ## 0. 한 줄 요약
 대상: <commit/branch/path> · 종류: <변경 설명 | 코드 설명>
+변경 성격 (change mode): <기능 추가 | 버그 수정 | 리팩터 | 설정·문서 | 테스트> (여럿이면 주된 것 먼저)
 규모: <change: 파일 N개, +A/−D | code: 파일 N개, 총 L줄>
 <one sentence: what this does and why it matters>
 
@@ -53,12 +55,18 @@ from the explained commit, add "(현재 작업 트리 기준)" once.
 - 목표: <what "done" means>
 - 큰 방향: <the approach in 1–2 lines> — 고른 이유: <why> / 버린 대안: <alt or "기록 없음">
 - 제약: <limits, assumptions>
+- 전 → 후 (change mode): 전: <behavior before, as the user sees it> / 후: <behavior after>
+- 핵심 용어 (≤5, only terms needed to read §2–§4; omit the table if none):
+
+| 용어 | 뜻 |
 
 ## 2. 아키텍처
 <ASCII box-and-arrow diagram, ≤20 lines: 5–12 concepts with plain-language labels, main path
  top-to-bottom in one column, side inputs written on the arrow ("── 가격 캐시 ──▶").
  change mode: changed parts marked ★ · code mode: target marked ← 여기>
 흐름: 입력 <…> → 처리 <…> → 출력 <…>
+영향 범위: <outside the change/target: who calls or reads it — `path:line` each;
+ "찾은 곳 없음 (grep <pattern>)" if none>
 
 ## 3. 파일 트리
 <tree of only the relevant dirs; right-hand comment = role in ≤8 words;
