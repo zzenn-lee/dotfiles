@@ -58,6 +58,7 @@ REVIEW_DOMAINS = [
 
 NEGATIONS = [
     "아니",  # stem: covers 아니고/아니라/아니에요/아닙니다-adjacent forms
+    "아닌",  # 아니 + adnominal ㄴ fuses into its own syllable, not an "아니" substring
     "아님",
     "아닙니다",
     "아니에요",

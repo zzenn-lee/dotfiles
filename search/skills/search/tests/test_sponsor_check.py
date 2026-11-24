@@ -132,6 +132,14 @@ class DetectTests(unittest.TestCase):
         verdict, _evidence = detect(post)
         self.assertEqual(verdict, "없음")
 
+    def test_anin_form_negates_disclosure(self):
+        # "아닌" fuses the adnominal ㄴ into its own syllable, so it is not a
+        # substring of the "아니" stem — needs its own explicit entry.
+        text = "체험단 아닌 내돈내산 리뷰입니다"
+        post = {"title": "t", "date": "d", "text": text, "links": [], "images": []}
+        verdict, _evidence = detect(post)
+        self.assertEqual(verdict, "없음")
+
     def test_plain_word_gwanggo_mid_text_not_flagged(self):
         filler = "맛도 향도 괜찮았고 가격도 적당한 편이었습니다. " * 20
         text = filler + "광고에서 보던 그 맛이 그대로 느껴져서 신기했습니다. " + filler
