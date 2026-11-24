@@ -8,6 +8,7 @@ Claude Code 같은 AI 에이전트 설정(규칙, 스킬, hook)을 Mac·Windows�
 claude/
 └─ skills/
    └─ explain/SKILL.md   /explain — 코드나 변경을 위에서 아래로(목적 → 아키텍처 → 파일 트리 → 세부) 한 번에 설명
+search/                  네이버·구글·소셜·지도·숙소 검색 도구 설치와 키 설정 (macOS) — search/README.md
 ```
 
 예정: `claude/CLAUDE.md`(전역 규칙), `claude/hooks/`(설명 빠뜨림 방지 Stop hook)
