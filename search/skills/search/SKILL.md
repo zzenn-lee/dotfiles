@@ -44,11 +44,18 @@ any search before the user answers. The plan is short, so it never costs the use
    Typical mixes: 국내 장소·업체 → naver blog + cafe + local, kakao-map, WebSearch (공식) ·
    해외 여행 → WebSearch, last30days `--days 365`, serpapi hotels/flights, airbnb ·
    상품 → WebSearch (브랜드 공식), naver blog, serpapi shopping, last30days.
+   Fast-changing local topics (요즘 뜨는 동네 맛집·카페, 팝업, 행사) → also offer last30days
+   Threads as an *optional* source with its credit estimate (see 3.), and let the user choose.
    Instagram is never used.
 
 3. **Expected usage vs budget.** Per-run budgets: SerpAPI ≤ 10 calls, ScrapeCreators ≤ 100
    credits, blog sponsor checks ≤ 30 posts. If the plan needs more, say how much more and why
    in the plan — the user's "ㄱ" is the OK.
+   ScrapeCreators cost (measured 2026-11-24, ~1 credit per API request): Threads ≈ 1 credit
+   per subquery · Reddit ≈ 10 credits per run when keyless Reddit is blocked from this network
+   (the engine then falls back to paid search + comment fetches; it was blocked in testing) ·
+   YouTube comments ≈ 1 credit per video. Estimate per last30days run from these and write the
+   total in the plan.
 
 4. **Current balances.** Run this (it reads keys from the file and prints only numbers; never
    `cat` the file, `echo` a key, or use `set -x`):
@@ -69,8 +76,8 @@ any search before the user answers. The plan is short, so it never costs the use
 
    Keep the two numbers: they are the "before" values for the usage line in Step 6.
 
-5. **Naver cafe warning.** If cafes are a main source for this topic (결혼 준비, 육아, 지역
-   커뮤니티, 중고 거래 등), say so: "카페 글은 미리보기(제목·앞부분)만 보고 본문은 안 읽어요 —
+5. **Naver cafe warning.** Whenever Naver cafes are a main source — 동네 맛집·카페, 육아,
+   결혼 준비, 지역 커뮤니티, 중고 거래, and any other topic where cafe posts dominate — say so: "카페 글은 미리보기(제목·앞부분)만 보고 본문은 안 읽어요 —
    링크를 남길게요."
 
 Plan output (Korean, this shape):
@@ -101,21 +108,47 @@ Run the planned sources in this order, and only the planned ones:
 2. **naver-search** — `blog`, `cafearticle`, `news`, `kin`, `local`, `datalab` as the plan says.
    Keep every Naver blog URL (`blog.naver.com/…`) for Step 3. Cafe results (`cafe.naver.com/…`):
    keep title + preview + link + date only; do not open them.
+   If you ever call a search API with curl instead of the MCP, pass Korean queries as
+   `curl -G --data-urlencode "query=<검색어>" <endpoint>` (hand-encoded `%20` queries returned 0
+   results in testing).
 3. **serpapi** — only for the allowed cases above. Count every call; stop at the budget.
-4. **last30days** — call its engine directly for JSON (not its own report format). Resolve
-   Python 3.12+ the way last30days requires, then run with a single-quoted topic:
+4. **last30days** — call its engine directly for JSON (not its own report format). Under Claude
+   Code the engine refuses to run without a query plan (its "LAW 7" gate, exit 2), so always pass
+   a small plan on stdin with `--plan -`, and restrict sources with `--search`. Shell variables do
+   not survive between Bash calls, so do it all in one call and use the printed path afterwards:
 
 ```bash
+L30PY=""
 for py in python3.14 python3.13 python3.12 python3; do
   command -v "$py" >/dev/null && "$py" -I -c 'import sys; raise SystemExit(sys.version_info < (3, 12))' && L30PY="$py" && break
 done
-out="$(mktemp -t search-l30)"
-"$L30PY" ~/.claude/skills/last30days/scripts/last30days.py '<topic>' --emit=json --days 30 > "$out"
+if [ -z "$L30PY" ]; then echo "last30days: Python 3.12+ 없음 — 건너뜀"; else
+  out="$(mktemp -t search-l30)"; echo "결과 파일: $out"
+  "$L30PY" ~/.claude/skills/last30days/scripts/last30days.py '<topic>' --emit=json --days 30 \
+    --search reddit,threads --plan - > "$out" 2> "$out.err" <<'PLAN_EOF'
+{"intent": "opinion", "freshness_mode": "balanced_recent", "cluster_mode": "none",
+ "subqueries": [{"label": "primary", "search_query": "<keywords>", "ranking_query": "<natural question>",
+   "sources": ["reddit", "threads"], "weight": 1.0}]}
+PLAN_EOF
+  echo "exit=$?"; tail -3 "$out.err"
+fi
 ```
 
-   `--days 30` for current chatter (trends, recent reviews); `--days 365` for durable info (trip
-   tips, product reviews, a business's reputation). Use Bash timeout 600000. For posts older than
-   a year, supplement with serpapi `site:reddit.com` (counts toward the SerpAPI budget).
+   - Fill: `--search` and `sources` = the planned last30days sources (`reddit`, `threads`,
+     `youtube`, `hackernews`; never `instagram`). `search_query` = short keywords, no dates;
+     `intent` = `how_to` (tips) → `"freshness_mode": "evergreen_ok"`, `"cluster_mode": "workflow"`;
+     otherwise `opinion` / `balanced_recent` / `none` as above. Up to 3 subqueries (e.g. Korean and
+     English keywords for Threads — a Korean-only Threads query returned 0 results in testing).
+   - `--days 30` for current chatter (trends, recent reviews); `--days 365` for durable info
+     (trip tips, product reviews, a business's reputation). Bash timeout 600000.
+   - Output: a JSON object; items are in `results[]` with `title`, `url`,
+     `source`, `published_at`, `engagement`, `summary`. `source_status` says which sources ran.
+   - If it prints "Python 3.12+ 없음 — 건너뜀" or `exit` ≠ 0: skip last30days and list it under §3
+     한계 ("last30days 건너뜀: <reason>").
+   - **Credits:** after every last30days call, re-run the Step 1 balance command. When
+     (before − now) reaches 100 credits (or the amount the user OK'd), stop calling last30days.
+   - For posts older than a year, supplement with serpapi `site:reddit.com` (counts toward the
+     SerpAPI budget).
 5. **kakao-map / airbnb** — place facts and listings as planned.
 
 For each item keep: URL, title, source, date (as shown by the source), engagement if given
@@ -123,16 +156,20 @@ For each item keep: URL, title, source, date (as shown by the source), engagemen
 
 ## Step 3: Sponsor check (Naver blogs)
 
-1. From the Step 2 Naver blog URLs, pick up to 30 — most relevant first, then most recent.
-2. Write them one per line to a temp file and run the script:
+1. From the Step 2 Naver blog URLs, pick up to 30: first posts that name the specific venue or
+   product being researched, then generic roundups ("추천 N곳"); within each group, most recent
+   first.
+2. In one Bash call, write them one per line to a temp file, run the script, and print the
+   result path:
 
 ```bash
 f="$(mktemp -t search-blogs)"
 printf '%s\n' '<url1>' '<url2>' > "$f"
 python3 ~/.claude/skills/search/scripts/sponsor_check.py --input "$f" --max 30 > "$f.json"
+echo "판별 결과: $f.json"
 ```
 
-3. Read `$f.json` — one object per URL: `verdict` (`협찬` | `의심` | `없음` | `읽기실패`),
+3. Read the printed `판별 결과` path (Read tool, absolute path) — one object per URL: `verdict` (`협찬` | `의심` | `없음` | `읽기실패`),
    `evidence` (`[{signal, position}]` — the phrase/link and where: 맨 위·맨 아래·본문 중간),
    `excerpt` (~3,000 chars: start + end + paragraphs around 장점/단점 words), `date`, `title`.
 4. Cafe posts never go into this script. Non-blog URLs come back `읽기실패` — that is expected.
@@ -143,7 +180,7 @@ For every kept item fill these slots:
 
 | Slot | Rule |
 |---|---|
-| 등급 | `A 공식` operator/maker/public body · `B 실사용` independent first-hand · `C 정리글` listicle, SEO roundup, aggregator ("BEST 10") · `D 협찬·광고` script verdict `협찬` or `의심`, or a visible ad label |
+| 등급 | `A 공식` operator/maker/public body · `B 실사용` independent first-hand · `C 정리글` listicle, SEO roundup, aggregator ("BEST 10"), or a post that says itself it is not a first-hand visit/use (comparison or price-list posts, AI-made images) — note "직접 경험 아님" · `D 협찬·광고` script verdict `협찬` or `의심`, or a visible ad label |
 | 협찬 배지 | `협찬` / `협찬 의심` (from `verdict`) + one evidence line, e.g. "맨 아래: 소정의 원고료" · `판별 못 함` for `읽기실패` · cafe: `미리보기만` |
 | 날짜 | the post's date; if none, "날짜 없음" (never guess) |
 | 반응 | engagement numbers if the source gives them, else "—" |
@@ -156,10 +193,12 @@ removed.
 
 ## Step 5: Cross-check
 
-- A claim (가격, 영업시간, 웨이팅, 맛·품질 평가, 규정) found in ≥ 2 independent sources → "확인됨".
+- Cross-check claim by claim. "확인됨" only when ≥ 2 independent sources state the same
+  *specific* claim — a named dish or product, a price, a wait time, hours, a rule.
   Two posts by the same author or copies of one listicle count as one source. `D` sources do not
   confirm each other.
-- Found in only 1 source → "한 곳만".
+- Found in only 1 source → "한 곳만". A shared vague impression ("분위기 좋음", "맛있어요") is
+  "인상" even if many sources say it; it never becomes "확인됨".
 - Price, hours or rules dated more than 12 months before today → "오래된 정보".
 - Sources that contradict each other → list both sides with links in §3.
 
@@ -189,7 +228,7 @@ Write the report in this skeleton (Korean). Every item has a link and a date.
 - 소스끼리 다른 말: …
 - 한 곳만 나온 주장: …
 - 오래된 정보: …
-- 한계: 카페 글은 미리보기만 봄 · 이미지 속 협찬 배너는 못 읽음(판별 "없음"이어도 100% 아님) · <읽기실패 n개>
+- 한계: 카페 글은 미리보기만 봄 · 건너뛴 소스(키 없음, Python 3.12+ 없음, 크레딧 한도 등) · 이미지 속 협찬 배너는 못 읽음(판별 "없음"이어도 100% 아님) · <읽기실패 n개>
 
 ## 4. 출처 목록
 | # | 제목 | 출처 | 등급 | 날짜 | 협찬 | 링크 |
@@ -238,4 +277,7 @@ Then:
 | Skipping §2 or §3 when there's little to say | §2 says "협찬글 없음"; §3 lists at least the limits |
 | Plain chat answer | Artifact link + md file + 3-line summary + usage line |
 | Reading full blog posts again in Step 4 | Use the script's `excerpt` |
+| "확인됨" for a shared vibe ("분위기 좋음") | Only for the same specific claim in ≥ 2 independent sources; vibes are "인상" |
+| last30days run without `--plan -` (exits 2 under Claude Code) | Use the Step 2 block: plan heredoc + `--search` |
+| Reusing `$out` / `$f` in a later Bash call | Read the absolute path the block printed |
 | Using last30days' own report format | `--emit=json`, merge its items into this report |
