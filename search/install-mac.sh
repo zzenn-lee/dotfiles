@@ -27,6 +27,9 @@ for k in SCRAPECREATORS_API_KEY BRAVE_API_KEY; do
   grep -v "^$k=" "$L30" > "$L30.tmp" || true; echo "$k=$v" >> "$L30.tmp"; mv "$L30.tmp" "$L30"; chmod 600 "$L30"
 done
 
+# last30days 가 기본으로 볼 추가 소스 (Reddit·YouTube·HN 은 원래 켜져 있음). 이미 정해 뒀으면 건드리지 않음.
+grep -q '^INCLUDE_SOURCES=' "$L30" || echo "INCLUDE_SOURCES=instagram,threads,instagram_comments,youtube_comments" >> "$L30"
+
 # 4. MCP 등록 (키가 있는 것만)
 has() { for k in "$@"; do [[ -n "${!k:-}" ]] || return 1; done; }
 reg() {
