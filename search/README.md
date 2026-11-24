@@ -5,10 +5,12 @@
 ## 설치
 
 ```bash
-bash search/install-mac.sh        # 처음 한 번: 키 파일을 만들고, 키 없는 도구부터 등록
-open -e ~/.config/search/keys.env # 키 채우기 (파일 안에 발급처가 적혀 있어요)
-bash search/install-mac.sh        # 다시 실행: 키를 채운 도구만 추가로 등록
+bash search/install-mac.sh                    # 처음 한 번: 키 파일을 만들고, 키 없는 도구부터 등록
+bash search/bin/set-key KAKAO_REST_API_KEY    # 키 하나 넣기: 화면에 안 보이게 입력 → 저장 → 자동 재등록
+bash search/bin/set-key                       # 넣을 수 있는 키 이름 목록
 ```
+
+편집기로 한 번에 채워도 돼요: `open -e ~/.config/search/keys.env` 후 `bash search/install-mac.sh`. 키 발급 방법은 그 파일 주석에 있어요.
 
 새 Claude Code 세션에서 `/mcp` 로 연결 상태를 확인해요.
 
@@ -32,7 +34,8 @@ bash search/install-mac.sh        # 다시 실행: 키를 채운 도구만 추�
 search/
 ├─ install-mac.sh     설치·등록 (여러 번 실행해도 됨)
 ├─ keys.env.example   키 목록 템플릿 → ~/.config/search/keys.env 로 복사돼요
-└─ bin/mcp            MCP 런처: 키 파일을 읽고 이름에 맞는 서버를 고정 버전으로 실행
+├─ bin/mcp            MCP 런처: 키 파일을 읽고 이름에 맞는 서버를 고정 버전으로 실행
+└─ bin/set-key        키 하나를 숨김 입력으로 저장하고 설치를 다시 실행
 ```
 
 - 키는 `~/.config/search/keys.env` 한 곳에만 있어요 (권한 600, git 에 안 올라감). Claude 설정 파일에는 키가 들어가지 않아요.

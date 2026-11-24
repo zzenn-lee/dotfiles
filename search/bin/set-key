@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# 키 하나를 화면에 안 보이게 입력받아 ~/.config/search/keys.env 에 저장하고, 설치를 다시 돌려요.
+# 사용: bash set-key KAKAO_REST_API_KEY   (이름 없이 실행하면 목록을 보여줘요)
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+KEYS="$HOME/.config/search/keys.env"
+mkdir -p "$(dirname "$KEYS")"
+[[ -f "$KEYS" ]] || cp "$DIR/keys.env.example" "$KEYS"
+chmod 600 "$KEYS"
+
+NAMES=$(grep -oE '^[A-Z0-9_]+=' "$DIR/keys.env.example" | tr -d '=')
+NAME="${1:-}"
+if [[ -z "$NAME" ]] || ! grep -qx "$NAME" <<<"$NAMES"; then
+  echo "사용: bash $0 <이름>"; echo "이름 목록:"; sed 's/^/  /' <<<"$NAMES"; exit 2
+fi
+
+read -rsp "$NAME 값 입력 (화면에 안 보여요): " VALUE; echo
+VALUE="$(printf '%s' "$VALUE" | tr -d '[:space:]')"
+[[ -n "$VALUE" ]] || { echo "빈 값이라 저장하지 않았어요."; exit 1; }
+
+NAME="$NAME" VALUE="$VALUE" awk '
+  BEGIN { n = ENVIRON["NAME"]; v = ENVIRON["VALUE"]; done = 0 }
+  index($0, n "=") == 1 { print n "=" v; done = 1; next }
+  { print }
+  END { if (!done) print n "=" v }
+' "$KEYS" > "$KEYS.tmp" && mv "$KEYS.tmp" "$KEYS" && chmod 600 "$KEYS"
+echo "저장했어요: $NAME (끝 4자리 …${VALUE: -4})"
+
+bash "$DIR/install-mac.sh" | sed -n '/MCP 등록:/,$p'
