@@ -26,7 +26,7 @@ bash search/bin/set-key                       # 넣을 수 있는 키 이름 목
 | airbnb | MCP | Airbnb 숙소 검색·상세 | — | `@openbnb/mcp-server-airbnb@0.3.0` |
 | reddit | MCP | Reddit 검색·댓글 | 이미 승인된 Reddit 키 (신규 발급 불가) | `reddit-mcp-buddy@1.3.0` |
 | fli | MCP | 구글 항공권 (가장 싼 날짜 찾기) | — | `flights[all]==0.9.0` — **지금은 꺼 둠** |
-| last30days | 스킬 | Reddit·YouTube·HN 무료, Instagram·Threads·TikTok 은 ScrapeCreators 키 | 선택 | `mvanhorn/last30days-skill` (최신) |
+| last30days | 스킬 | Reddit·YouTube·HN 무료, Threads·YouTube 댓글은 ScrapeCreators 키 (한 번 주는 10,000 크레딧, 초기화 없음) | 선택 | `mvanhorn/last30days-skill` (최신) |
 
 ## 파일
 

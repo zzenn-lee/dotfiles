@@ -28,7 +28,10 @@ for k in SCRAPECREATORS_API_KEY BRAVE_API_KEY; do
 done
 
 # last30days 가 기본으로 볼 추가 소스 (Reddit·YouTube·HN 은 원래 켜져 있음). 이미 정해 뒀으면 건드리지 않음.
-grep -q '^INCLUDE_SOURCES=' "$L30" || echo "INCLUDE_SOURCES=instagram,threads,instagram_comments,youtube_comments" >> "$L30"
+# Instagram 은 영상 위주라 뺐어요. 보충 검색(SC_MIN_ITEMS=0)은 무료 결과가 0건일 때만 크레딧을 써요.
+grep -q '^INCLUDE_SOURCES=' "$L30" || echo "INCLUDE_SOURCES=threads,youtube_comments" >> "$L30"
+grep -q '^LAST30DAYS_REDDIT_SC_MIN_ITEMS=' "$L30" || echo "LAST30DAYS_REDDIT_SC_MIN_ITEMS=0" >> "$L30"
+grep -q '^LAST30DAYS_YT_SC_MIN_ITEMS=' "$L30" || echo "LAST30DAYS_YT_SC_MIN_ITEMS=0" >> "$L30"
 
 # 4. MCP 등록 (키가 있는 것만)
 has() { for k in "$@"; do [[ -n "${!k:-}" ]] || return 1; done; }
