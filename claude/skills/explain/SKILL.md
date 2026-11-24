@@ -63,18 +63,24 @@ from the explained commit, add "(현재 작업 트리 기준)" once.
 ## 2. 아키텍처
 ```mermaid
 flowchart TD
-  db[("리서치 DB")] --> limit["오늘 상한 정하기"]
+  db[("리서치 DB")] -->|"후보 목록"| limit["오늘 상한 정하기"]
   cfg[/"설정 파일"/] -.->|"읽음"| limit
   limit -->|"상한 7 또는 10"| pick["하이라이트 고르기"]
-  pick --> llm["이브가 본문 작성"]
-  llm --> fix["빠진 링크 보충"]
-  fix --> out(["Discord 발송"])
-  class limit,llm,fix changed
+  pick -->|"고른 글"| llm["이브가 본문 작성"]
+  llm ==>|"새: 본문 넘김"| fix["빠진 링크 보충"]
+  fix -->|"완성 본문"| out(["Discord 발송"])
+  class limit,fix changed
   classDef changed fill:#fde68a,stroke:#b45309,color:#111
 ```
-<rules: 5–12 concept nodes with plain Korean labels, always in "double quotes"; main path
- top-down; side inputs (DB, config, cache, external API) as their own nodes with dotted -.-> edges;
- edge labels = short plain words; ids = short ascii (db, limit); 2–4 `subgraph` only if it helps.
+그림 요점: <one sentence — the single claim this diagram shows>
+<rules: draw the mechanism (what flows where), not a list of names. 5–12 concept nodes with
+ plain Korean labels, always in "double quotes"; main path top-down; side inputs (DB, config,
+ cache, external API) as their own nodes with dotted -.-> edges; EVERY edge has a label saying
+ what moves or happens ("읽음", "후보 목록", "매일 7시"); ids = short ascii (db, limit);
+ 2–4 `subgraph` only if it helps. change mode — draw the difference:
+ a connection that did not exist before → thick `==>` labeled "새: …";
+ a connection that was removed → `--x` labeled "삭제: …" (keep it in the picture);
+ same connection, different content → normal arrow labeled "바뀜: 전 → 후".
  change mode: `class … changed` on changed nodes · code mode: `class … target` +
  `classDef target fill:#bfdbfe,stroke:#1d4ed8,color:#111`. No function/file names as labels.>
 흐름: 입력 <…> → 처리 <…> → 출력 <…>
@@ -124,6 +130,18 @@ or 8+ files: write the full text to `~/.claude/explain/<repo>-<slug>-<YYYYMMDD>.
 §0–§3, the file path, and up to 3 lines of the most important §5/§6 points in the reply.
 `<slug>` = target basename or short commit hash, kebab-case. Otherwise print everything in the reply.
 
+## Detailed HTML version
+
+When the user asks for more detail or a visual version — "더 디테일하게", "자세히", "다이어그램으로",
+"HTML로", or `/explain … --html` — build the same explanation as an HTML page instead of md:
+1. Reuse the md explanation (write it first if it doesn't exist yet), then load the
+   `artifact-design` and `artifact-diagramming` skills before writing any HTML.
+2. Same sections §0–§7. Replace each Mermaid block with a hand-written inline SVG that follows
+   artifact-diagramming (labeled arrows, `currentColor`, one claim per `<figure>` + `<figcaption>`).
+3. Add a small diagram to a §4 chunk only where it shows a mechanism prose can't: data moving
+   between parts, before → after of a changed flow, or a state sequence. Not every chunk.
+4. Publish with the Artifact tool; also keep the md file (Step 4 path). Reply with the link and §0.
+
 ## Follow-up
 
 If the user answers a §7 question wrong or says a part is unclear, re-explain only that part:
@@ -137,6 +155,8 @@ If the user answers a §7 question wrong or says a part is unclear, re-explain o
 | Purpose invented from the code alone | Quote the request; if none found, write "요청 원문 없음 — 코드로 추정" |
 | "테스트 통과" without a run | Command + result in §5, or move to 확인 안 된 것 |
 | Diagram of functions/file names | Concepts with plain labels, 5–12 nodes |
+| Unlabeled arrows | Every arrow says what moves or happens |
+| Change mode shows only colored boxes | Also draw new (`==>` "새:"), removed (`--x` "삭제:"), changed ("바뀜: 전 → 후") edges |
 | Mermaid label with ( ) : or Korean unquoted | Every label in "double quotes" — unquoted special chars break rendering |
 | Listing every file in §4 | 3–6 chunks by meaning; file list belongs in §3 |
 | Jargon without meaning | backtick name + plain meaning on first use |
