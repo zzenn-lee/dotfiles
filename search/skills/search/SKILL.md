@@ -156,16 +156,17 @@ For each item keep: URL, title, source, date (as shown by the source), engagemen
 
 ## Step 3: Sponsor check (Naver blogs)
 
-1. From the Step 2 Naver blog URLs, pick up to 30: first posts that name the specific venue or
-   product being researched, then generic roundups ("추천 N곳"); within each group, most recent
-   first.
-2. In one Bash call, write them one per line to a temp file, run the script, and print the
-   result path:
+1. Cap: 30, unless the user approved a higher N (N ≤ 100) in the Step 1 plan — then use that N.
+   From the Step 2 Naver blog URLs, pick up to that cap: first posts that name the specific venue
+   or product being researched, then generic roundups ("추천 N곳"); within each group, most
+   recent first.
+2. In one Bash call, write them one per line to a temp file, run the script with `--max` set to
+   the cap from 1 (30 by default, or the approved N up to 100), and print the result path:
 
 ```bash
 f="$(mktemp -t search-blogs)"
 printf '%s\n' '<url1>' '<url2>' > "$f"
-python3 ~/.claude/skills/search/scripts/sponsor_check.py --input "$f" --max 30 > "$f.json"
+python3 ~/.claude/skills/search/scripts/sponsor_check.py --input "$f" --max 30 > "$f.json"  # or --max <approved N, ≤ 100>
 echo "판별 결과: $f.json"
 ```
 
@@ -180,23 +181,25 @@ For every kept item fill these slots:
 
 | Slot | Rule |
 |---|---|
-| 등급 | `A 공식` operator/maker/public body · `B 실사용` independent first-hand · `C 정리글` listicle, SEO roundup, aggregator ("BEST 10"), or a post that says itself it is not a first-hand visit/use (comparison or price-list posts, AI-made images) — note "직접 경험 아님" · `D 협찬·광고` script verdict `협찬` or `의심`, or a visible ad label |
-| 협찬 배지 | `협찬` / `협찬 의심` (from `verdict`) + one evidence line, e.g. "맨 아래: 소정의 원고료" · `판별 못 함` for `읽기실패` · cafe: `미리보기만` |
+| 등급 | `A 공식` operator/maker/public body · `B 실사용` independent first-hand · `C 정리글` listicle, SEO roundup, aggregator ("BEST 10"), or a post that says itself it is not a first-hand visit/use (comparison or price-list posts, AI-made images) — note "직접 경험 아님" · `D 협찬·광고` script verdict `협찬`, or a visible ad label. Verdict `의심` does **not** move the post to `D` — it keeps the tier (`B`/`C`) its content otherwise earns |
+| 협찬 배지 | verdict `협찬` → tier `D` + one evidence line, e.g. "맨 아래: 소정의 원고료" · verdict `의심` → `협찬 의심` badge on top of its earned `B`/`C` tier (same evidence line) · `판별 못 함` for `읽기실패` · cafe: `미리보기만` |
 | 날짜 | the post's date; if none, "날짜 없음" (never guess) |
 | 반응 | engagement numbers if the source gives them, else "—" |
 | 강조한 장점 | ≤ 3, short phrases |
 | 언급한 단점 | ≤ 3; "언급 없음" if none |
 
 Naver blogs: read only `excerpt` (do not re-read the full post). Other sources: the text or
-snippet from Step 2. Sponsored posts stay in the report with tier `D` — they are labeled, not
-removed.
+snippet from Step 2. Sponsored (`협찬`) posts stay in the report with tier `D` — they are
+labeled, not removed. `의심` posts stay at their earned `B`/`C` tier with a `협찬 의심` badge —
+they are flagged, not demoted.
 
 ## Step 5: Cross-check
 
 - Cross-check claim by claim. "확인됨" only when ≥ 2 independent sources state the same
   *specific* claim — a named dish or product, a price, a wait time, hours, a rule.
   Two posts by the same author or copies of one listicle count as one source. `D` sources do not
-  confirm each other.
+  confirm each other, and a `협찬 의심`-badged source never counts toward "확인됨" either (it may
+  still appear as context in §2/§3).
 - Found in only 1 source → "한 곳만". A shared vague impression ("분위기 좋음", "맛있어요") is
   "인상" even if many sources say it; it never becomes "확인됨".
 - Price, hours or rules dated more than 12 months before today → "오래된 정보".
@@ -219,10 +222,10 @@ Write the report in this skeleton (Korean). Every item has a link and a date.
 <the Step 1 template; each item: 내용 · [출처](url) · 날짜 · 등급 배지 · 협찬 배지(해당 시) · 확인됨/한 곳만>
 
 ## 2. 협찬 vs 실사용
-- 협찬글이 공통으로 강조한 점: …
-- 실사용(B) 후기의 평가: … (같은 점에 대해 맞는지·다른지)
-- 협찬글인데도 나온 단점: …
-<if no sponsored posts were found: "협찬글 없음" + how many were checked>
+- 협찬·협찬 의심 글이 공통으로 강조한 점: …
+- 협찬 의심 배지 없는 실사용(B/C) 후기의 평가: … (같은 점에 대해 맞는지·다른지)
+- 협찬(또는 협찬 의심)글인데도 나온 단점: …
+<if no 협찬/협찬 의심 posts were found: "협찬글 없음" + how many were checked>
 
 ## 3. 엇갈린 점·확인 못 한 것
 - 소스끼리 다른 말: …
@@ -272,6 +275,8 @@ Then:
 | WebSearch only — results dominated by listicles (C) | Add naver blog/cafe, kakao-map, last30days per the source table; query `후기`/`단점`/`내돈내산` |
 | Guessing sponsorship from the site type ("목록 글이니 광고일 듯") | Run `sponsor_check.py`; quote `evidence` with its position |
 | Ad-hoc trust words ("신뢰도 중") | Exactly `A 공식` / `B 실사용` / `C 정리글` / `D 협찬·광고` |
+| Moving a `의심` post to tier `D` | Only verdict `협찬` (or a visible ad label) → `D`; `의심` keeps its earned `B`/`C` tier + `협찬 의심` badge |
+| Counting a `협찬 의심` source toward "확인됨" | `의심` sources never confirm a claim, same as `D` |
 | "날짜 미표기" for everything | Take the date from the source / script `date`; "날짜 없음" only when truly missing |
 | Only pros, or a vague summary per place | 강조한 장점 ≤ 3 and 언급한 단점 ≤ 3 per source, "언급 없음" if none |
 | Skipping §2 or §3 when there's little to say | §2 says "협찬글 없음"; §3 lists at least the limits |

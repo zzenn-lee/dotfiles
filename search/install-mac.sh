@@ -36,8 +36,8 @@ grep -q '^LAST30DAYS_YT_SC_MIN_ITEMS=' "$L30" || echo "LAST30DAYS_YT_SC_MIN_ITEM
 # /search 스킬 (Claude Code 전역) — 이 저장소 폴더로 링크. 같은 이름의 진짜 폴더가 있으면 건드리지 않아요.
 SEARCH_SKILL="$HOME/.claude/skills/search"
 mkdir -p "$HOME/.claude/skills"
-if [[ -d "$SEARCH_SKILL" && ! -L "$SEARCH_SKILL" ]]; then
-  echo "⚠ $SEARCH_SKILL 가 이미 진짜 폴더라 링크를 건너뛰어요. 옮기거나 지운 뒤 다시 실행하세요."
+if [[ -e "$SEARCH_SKILL" && ! -L "$SEARCH_SKILL" ]]; then
+  echo "⚠ $SEARCH_SKILL 가 이미 파일/폴더라 링크를 건너뛰어요. 옮기거나 지운 뒤 다시 실행하세요."
 else
   ln -sfn "$DIR/skills/search" "$SEARCH_SKILL"
 fi

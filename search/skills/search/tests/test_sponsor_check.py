@@ -117,6 +117,21 @@ class DetectTests(unittest.TestCase):
         verdict, _evidence = detect(post)
         self.assertEqual(verdict, "없음")
 
+    def test_daega_eobsi_is_not_a_negation(self):
+        # "금전적 대가 없이" (no monetary consideration) must not neutralize the
+        # nearby "제공받아" disclosure — bare "없이" is too broad a negation.
+        text = "본 포스팅은 제품을 무상으로 제공받아 금전적 대가 없이 작성되었습니다."
+        post = {"title": "t", "date": "d", "text": text, "links": [], "images": []}
+        verdict, evidence = detect(post)
+        self.assertEqual(verdict, "협찬")
+        self.assertTrue(evidence)
+
+    def test_ani_go_stem_negates_disclosure(self):
+        text = "체험단 아니고 내돈내산"
+        post = {"title": "t", "date": "d", "text": text, "links": [], "images": []}
+        verdict, _evidence = detect(post)
+        self.assertEqual(verdict, "없음")
+
     def test_plain_word_gwanggo_mid_text_not_flagged(self):
         filler = "맛도 향도 괜찮았고 가격도 적당한 편이었습니다. " * 20
         text = filler + "광고에서 보던 그 맛이 그대로 느껴져서 신기했습니다. " + filler
@@ -158,6 +173,22 @@ class ExcerptTests(unittest.TestCase):
         self.assertIn(tail_sentence, result)
         self.assertLessEqual(len(result), 3000)
 
+    def test_excerpt_keeps_tail_even_with_many_proscons_paragraphs(self):
+        # 60 pros/cons-bearing paragraphs in the middle must not crowd out
+        # the tail — the tail is always kept, and the final paragraph here
+        # is the one that matters ("단점: 주차 불편").
+        paras = [
+            f"만족스럽고 추천할 만한 포인트 {i}번입니다 정말 좋았어요 재방문 의사 있습니다 가성비도 훌륭했고 전체적으로 매우 만족스러운 경험이었습니다."
+            for i in range(60)
+        ]
+        tail_para = "단점: 주차 불편"
+        text = "\n".join(paras) + "\n" + tail_para
+        self.assertGreater(len(text), 3000)  # middle content alone must overflow the limit
+
+        result = excerpt(text, limit=3000)
+        self.assertIn(tail_para, result)
+        self.assertLessEqual(len(result), 3000)
+
 
 class ToMobileUrlTests(unittest.TestCase):
     def test_to_mobile_url_variants(self):
@@ -193,6 +224,22 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "협찬")
         self.assertEqual(result["title"], "동네 카페 다녀온 후기")
         self.assertNotIn("error", result)
+
+    def test_empty_body_reports_read_failure(self):
+        # A deleted post / block-captcha page parses without raising but
+        # yields no body text at all — must be reported, not scored as "없음".
+        html = (
+            "<!DOCTYPE html><html><head>"
+            '<meta property="og:title" content="삭제된 게시물">'
+            "</head><body></body></html>"
+        )
+
+        def stub_fetch(_url: str) -> str:
+            return html
+
+        result = check("https://blog.naver.com/myid/12345", fetch=stub_fetch)
+        self.assertEqual(result["verdict"], "읽기실패")
+        self.assertEqual(result["error"], "본문을 찾지 못함")
 
 
 class RunTests(unittest.TestCase):

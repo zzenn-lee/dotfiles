@@ -57,10 +57,10 @@ REVIEW_DOMAINS = [
 ]
 
 NEGATIONS = [
+    "아니",  # stem: covers 아니고/아니라/아니에요/아닙니다-adjacent forms
     "아님",
     "아닙니다",
     "아니에요",
-    "없이",
     "0원 협찬 아님",
 ]
 
@@ -334,36 +334,43 @@ def detect(post: dict) -> tuple[str, list[dict]]:
 
 
 def excerpt(text: str, limit: int = 3000) -> str:
-    """Head + tail + every pros/cons-bearing paragraph, deduped, in order."""
+    """Head (600) + tail (600), always kept, plus pros/cons paragraphs from the
+    middle filling whatever budget remains — reassembled in original order,
+    total <= limit. The tail must never be dropped just because the middle
+    content ran long."""
     if not text:
         return ""
 
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     n = len(text)
-    segments: list[tuple[int, str]] = [(0, text[:600])]
-    if n > 600:
-        tail_start = max(n - 600, 600)
-        segments.append((tail_start, text[tail_start:]))
 
+    head_end = min(600, n)
+    tail_start = max(n - 600, head_end)
+    head = text[:head_end]
+    tail = text[tail_start:] if tail_start < n else ""
+
+    # Budget left for middle pieces, after head + tail and up to two "\n"
+    # separators that will join them to the middle content.
+    reserved = len(head) + len(tail)
+    budget = max(limit - reserved - 2, 0)
+
+    middles: list[str] = []
+    used = 0
     offset = 0
     for para in text.split("\n"):
-        if any(word in para for word in PROS_CONS_WORDS):
-            start = text.find(para, offset)
-            if start == -1:
-                start = offset
-            segments.append((start, para))
+        para_start = offset
         offset += len(para) + 1  # account for the "\n" separator
-
-    segments.sort(key=lambda item: item[0])
-
-    seen: set[str] = set()
-    pieces: list[str] = []
-    for _, content in segments:
-        if not content or content in seen:
+        if para_start < head_end or para_start >= tail_start:
+            continue  # already covered by head/tail
+        if not any(word in para for word in PROS_CONS_WORDS):
             continue
-        seen.add(content)
-        pieces.append(content)
+        cost = len(para) + (1 if middles else 0)  # +1 for the internal "\n"
+        if used + cost > budget:
+            continue
+        middles.append(para)
+        used += cost
 
+    pieces = [p for p in ([head] + middles + [tail]) if p]
     return "\n".join(pieces)[:limit]
 
 
@@ -425,35 +432,35 @@ def default_fetch(url: str) -> str:
         return response.read().decode(charset, errors="replace")
 
 
+def _read_failure(url: str, error: str) -> dict:
+    """Build the uniform 읽기실패 result dict shared by check()'s failure paths."""
+    return {
+        "url": url,
+        "title": "",
+        "date": "",
+        "verdict": "읽기실패",
+        "evidence": [],
+        "excerpt": "",
+        "error": error,
+    }
+
+
 def check(url: str, fetch=default_fetch) -> dict:
     """Fetch and judge a single Naver blog post URL. Never raises."""
     mobile_url = to_mobile_url(url)
     if mobile_url is None:
-        return {
-            "url": url,
-            "title": "",
-            "date": "",
-            "verdict": "읽기실패",
-            "evidence": [],
-            "excerpt": "",
-            "error": "네이버 블로그 주소가 아님",
-        }
+        return _read_failure(url, "네이버 블로그 주소가 아님")
 
     try:
         html = fetch(mobile_url)
     except Exception as exc:  # noqa: BLE001 - must never raise, report instead
-        return {
-            "url": url,
-            "title": "",
-            "date": "",
-            "verdict": "읽기실패",
-            "evidence": [],
-            "excerpt": "",
-            "error": str(exc)[:200],
-        }
+        return _read_failure(url, str(exc)[:200])
 
     try:
         post = parse_post(html)
+        text = post.get("text") or ""
+        if not text.strip():
+            return _read_failure(url, "본문을 찾지 못함")
         verdict, evidence = detect(post)
         return {
             "url": url,
@@ -461,18 +468,10 @@ def check(url: str, fetch=default_fetch) -> dict:
             "date": post.get("date", ""),
             "verdict": verdict,
             "evidence": evidence,
-            "excerpt": excerpt(post.get("text", "")),
+            "excerpt": excerpt(text),
         }
     except Exception as exc:  # noqa: BLE001 - must never raise, report instead
-        return {
-            "url": url,
-            "title": "",
-            "date": "",
-            "verdict": "읽기실패",
-            "evidence": [],
-            "excerpt": "",
-            "error": str(exc)[:200],
-        }
+        return _read_failure(url, str(exc)[:200])
 
 
 # ---------------------------------------------------------------------------
