@@ -43,7 +43,7 @@ followed by their plain meaning the first time (`s_limit()` = 오늘 상한을 �
 Every claim about code carries `path:line` from the current working tree; if that file differs
 from the explained commit, add "(현재 작업 트리 기준)" once.
 
-```
+````markdown
 ## 0. 한 줄 요약
 대상: <commit/branch/path> · 종류: <변경 설명 | 코드 설명>
 변경 성격 (change mode): <기능 추가 | 버그 수정 | 리팩터 | 설정·문서 | 테스트> (여럿이면 주된 것 먼저)
@@ -61,12 +61,25 @@ from the explained commit, add "(현재 작업 트리 기준)" once.
 | 용어 | 뜻 |
 
 ## 2. 아키텍처
-<ASCII box-and-arrow diagram, ≤20 lines: 5–12 concepts with plain-language labels, main path
- top-to-bottom in one column, side inputs written on the arrow ("── 가격 캐시 ──▶").
- change mode: changed parts marked ★ · code mode: target marked ← 여기>
+```mermaid
+flowchart TD
+  db[("리서치 DB")] --> limit["오늘 상한 정하기"]
+  cfg[/"설정 파일"/] -.->|"읽음"| limit
+  limit -->|"상한 7 또는 10"| pick["하이라이트 고르기"]
+  pick --> llm["이브가 본문 작성"]
+  llm --> fix["빠진 링크 보충"]
+  fix --> out(["Discord 발송"])
+  class limit,llm,fix changed
+  classDef changed fill:#fde68a,stroke:#b45309,color:#111
+```
+<rules: 5–12 concept nodes with plain Korean labels, always in "double quotes"; main path
+ top-down; side inputs (DB, config, cache, external API) as their own nodes with dotted -.-> edges;
+ edge labels = short plain words; ids = short ascii (db, limit); 2–4 `subgraph` only if it helps.
+ change mode: `class … changed` on changed nodes · code mode: `class … target` +
+ `classDef target fill:#bfdbfe,stroke:#1d4ed8,color:#111`. No function/file names as labels.>
 흐름: 입력 <…> → 처리 <…> → 출력 <…>
-영향 범위: <outside the change/target: who calls or reads it — `path:line` each;
- "찾은 곳 없음 (grep <pattern>)" if none>
+영향 범위: <outside the change/target: who calls or reads it — `path:line` each, ≤6 bullets
+ (group by layer if more); "찾은 곳 없음 (grep <pattern>)" if none>
 
 ## 3. 파일 트리
 <tree of only the relevant dirs; right-hand comment = role in ≤8 words;
@@ -99,7 +112,7 @@ from the explained commit, add "(현재 작업 트리 기준)" once.
 1. <why-this-choice question> → 답 위치: §<n>, `path:line`
 2. <where-it-breaks question> → 답 위치: …
 3. <how-was-it-verified question> → 답 위치: …
-```
+````
 
 Section 7 has exactly 3 questions (why-this-choice, where-it-breaks, how-verified). They ask only about things explained above, and are specific to this code
 (name the function, value, file). Do not wait for answers; the output ends after §7.
@@ -123,7 +136,8 @@ If the user answers a §7 question wrong or says a part is unclear, re-explain o
 | Starting with details (functions, diffs) | §1–§3 first, always |
 | Purpose invented from the code alone | Quote the request; if none found, write "요청 원문 없음 — 코드로 추정" |
 | "테스트 통과" without a run | Command + result in §5, or move to 확인 안 된 것 |
-| Diagram of functions/file names | Concepts with plain labels, 5–12 boxes |
+| Diagram of functions/file names | Concepts with plain labels, 5–12 nodes |
+| Mermaid label with ( ) : or Korean unquoted | Every label in "double quotes" — unquoted special chars break rendering |
 | Listing every file in §4 | 3–6 chunks by meaning; file list belongs in §3 |
 | Jargon without meaning | backtick name + plain meaning on first use |
 | Generic §7 questions | Cite a concrete value/function from this code |
